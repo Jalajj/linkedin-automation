@@ -1,0 +1,40 @@
+name: Daily LinkedIn Comment Bot
+
+on:
+  schedule:
+    # Runs every day at 2:00 AM UTC (9:30 AM IST)
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  comment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run comment bot
+        env:
+          LI_AT_COOKIE: ${{ secrets.LINKEDIN_COOKIE }}
+          JSESSIONID_COOKIE: ${{ secrets.LINKEDIN_JSESSIONID }}
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          PUBLORA_API_KEY: ${{ secrets.PUBLORA_API_KEY }}
+        run: python main.py --tone professional --keywords "Artificial Intelligence Startup Product Management"
+
+      - name: Upload comment log
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: comment-logs
+          path: logs/
