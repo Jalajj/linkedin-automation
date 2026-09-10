@@ -23,14 +23,14 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      - name: Run comment bot
+      - name: Run comment bot (dry-run mode)
         env:
           LI_AT_COOKIE: ${{ secrets.LINKEDIN_COOKIE }}
           JSESSIONID_COOKIE: ${{ secrets.LINKEDIN_JSESSIONID }}
           APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           PUBLORA_API_KEY: ${{ secrets.PUBLORA_API_KEY }}
-        run: python main.py --tone professional --keywords "Artificial Intelligence Startup Product Management"
+        run: python main.py --tone professional --keywords "Artificial Intelligence Startup Product Management" --dry-run
 
       - name: Upload comment log
         uses: actions/upload-artifact@v4

@@ -30,34 +30,88 @@ class LinkedInClient:
 
     def _monitor_feed_apify(self, keywords: List[str], limit: int,
                             since_hours: int) -> List[Dict]:
-        """Use Apify's LinkedIn scraper actor."""
-        url = f"https://api.apify.com/v2/apify/6b93568d-4f0b-4bba-b83a-d76a7b4e7e0f/run"
+        """Use Apify's LinkedIn scraper actor.
 
+        Uses the LinkedIn Search Scraper (apify/linkedin-search-scraper)
+        to find posts matching keywords, then fetches full post details.
+        """
         keywords_filter = " OR ".join(keywords) if keywords else "Artificial Intelligence OR Product Management OR Startup Growth"
 
-        payload = {
-            "limit": limit,
-            "searchKeywords": keywords_filter,
-            "sinceHours": since_hours,
-            "token": self.apify_token
-        }
-
         try:
-            # Use Apify's LinkedIn search actor
+            # Step 1: Start the LinkedIn Search Scraper actor to find posts
+            actor_id = "apify/linkedin-search-scraper"
+            run_url = f"https://api.apify.com/v2/acts/{actor_id}/runs"
+
             response = httpx.post(
-                "https://api.apify.com/v2/key_value_stores/Oc9r3wRpiR0F3U8xZ/get-recent-posts",
+                run_url,
                 params={"token": self.apify_token},
-                json=payload,
-                timeout=60
+                json={
+                    "limit": limit,
+                    "searchKeywords": keywords_filter,
+                    "sinceHours": since_hours,
+                },
+                timeout=120
             )
 
-            if response.status_code == 200:
-                data = response.json()
-                posts = data.get("items", []) if isinstance(data, dict) else data
-                return [{"url": p.get("url", ""), "id": p.get("id", "")} for p in posts]
-            else:
-                print(f"Apify returned: {response.status_code}")
+            if response.status_code != 200:
+                print(f"Apify actor start returned: {response.status_code}")
                 return []
+
+            run_data = response.json()
+            run_id = run_data.get("data", {}).get("id") or run_data.get("id")
+
+            if not run_id:
+                print(f"Apify: no run ID returned. Response: {run_data}")
+                return []
+
+            # Step 2: Wait for the actor to complete
+            import time as _time
+            status_url = f"https://api.apify.com/v2/actor-runs/{run_id}"
+            dataset_id = None
+            max_wait = 120  # seconds
+            waited = 0
+
+            while waited < max_wait:
+                _time.sleep(5)
+                waited += 5
+                resp = httpx.get(f"{status_url}?token={self.apify_token}", timeout=30)
+                if resp.status_code != 200:
+                    print(f"Apify status check returned: {resp.status_code}")
+                    return []
+
+                run_info = resp.json()
+                status = run_info.get("data", {}).get("status", "")
+                dataset_id = run_info.get("data", {}).get("defaultDatasetId")
+
+                if status in ("succeeded", "failed"):
+                    break
+                if status in ("aborted", "cancelled"):
+                    print(f"Apify actor {status}")
+                    return []
+
+            if not dataset_id:
+                print("Apify: no dataset ID returned")
+                return []
+
+            # Step 3: Fetch results from the dataset
+            results_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items"
+            resp = httpx.get(
+                results_url,
+                params={"token": self.apify_token, "clean": "true"},
+                timeout=30
+            )
+
+            if resp.status_code == 200:
+                posts = resp.json()
+                if isinstance(posts, list):
+                    return [{"url": p.get("url", ""), "id": p.get("id", "")} for p in posts]
+                if isinstance(posts, dict) and "items" in posts:
+                    return [{"url": p.get("url", ""), "id": p.get("id", "")} for p in posts["items"]]
+                return []
+            else:
+                print(f"Apify results returned: {resp.status_code}")
+                return []
+
         except Exception as e:
             print(f"Apify error: {e}")
             return []
@@ -182,4 +236,7 @@ class LinkedInClient:
 
 
 # Import datetime for the manual fallback
-from datetime import datetime
+from datetime import datetime, timezone
+
+# Use timezone-aware datetime for the manual fallback timestamps
+_now = datetime.now(timezone.utc).isoformat()
