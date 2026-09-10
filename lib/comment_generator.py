@@ -107,11 +107,13 @@ class CommentGenerator:
         voice = self.VOICE_PROFILES.get(tone, self.VOICE_PROFILES["professional"])
 
         if self.api_key:
+            print(f"  🎯 Using OpenRouter API (DeepSeek model) for comment generation")
             return self._generate_via_api(post_content, tone, existing_texts,
                                          author_name, post_type, voice)
         else:
+            print(f"  ⚠️ No OpenRouter API key set, using fallback templates")
             return self._generate_fallback(post_content, tone,
-                                           existing_texts, author_name,
+                                           existing_comments, author_name,
                                            post_type, voice)
 
     def _analyze_post(self, text: str) -> Dict:
