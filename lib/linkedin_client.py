@@ -220,9 +220,13 @@ class LinkedInClient:
             platform_id = None
             if conn_resp.status_code == 200:
                 connections = conn_resp.json()
+                print(f"  Publora connections response: {json.dumps(connections, indent=2)}")
                 for conn in connections.get("connections", []):
-                    if conn.get("platform") == "linkedin":
-                        platform_id = conn.get("platformId") or conn.get("id")
+                    conn_platform_id = conn.get("platformId", "")
+                    # PlatformConnection format: "platform-id" (e.g., "linkedin-ABC123")
+                    if conn_platform_id.startswith("linkedin"):
+                        platform_id = conn_platform_id
+                        print(f"  Found LinkedIn connection: {platform_id}")
                         break
 
             if not platform_id:
