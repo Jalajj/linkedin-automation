@@ -49,6 +49,10 @@ def parse_args():
 def main():
     args = parse_args()
 
+    # In dry-run mode, auto-approve so we can see the generated comments
+    if args.dry_run:
+        args.auto_approve = True
+
     # Initialize clients
     linkedin = LinkedInClient(
         cookie=os.getenv("LI_AT_COOKIE"),
@@ -129,6 +133,8 @@ def main():
                     print(f"  ❌ Failed to post: {result.get('error', 'Unknown error')}")
             else:
                 print(f"  📝 [DRY RUN] Draft: {approved_draft['text'][:100]}...")
+                # Log the draft for review
+                approval.log_post(url, approved_draft, {"method": "dry-run", "success": True})
 
         except Exception as e:
             print(f"  ❌ Error processing post: {e}")
