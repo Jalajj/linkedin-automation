@@ -117,10 +117,13 @@ def main():
 
             # Post the comment
             if not args.dry_run:
+                # Use the URN from post data if available, otherwise convert URL
+                posted_id = post.get("urn") or post.get("full_urn") or url
                 result = linkedin.post_comment(
                     post_url=url,
                     comment=approved_draft["text"],
-                    reaction=approved_draft.get("reaction", "LIKE")
+                    reaction=approved_draft.get("reaction", "LIKE"),
+                    posted_id=posted_id
                 )
 
                 if result.get("success"):

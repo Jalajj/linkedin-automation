@@ -30,25 +30,25 @@ class LinkedInClient:
 
     def _monitor_feed_apify(self, keywords: List[str], limit: int,
                             since_hours: int) -> List[Dict]:
-        """Use Apify's LinkedIn scraper actor.
+        """Use Apify's LinkedIn post search scraper.
 
-        Uses the LinkedIn Search Scraper (apify/linkedin-search-scraper)
-        to find posts matching keywords, then fetches full post details.
+        Uses the curious_coder/linkedin-post-search-scraper actor to find
+        posts matching keywords, then returns their URLs and URNs.
         """
         keywords_filter = " OR ".join(keywords) if keywords else "Artificial Intelligence OR Product Management OR Startup Growth"
 
         try:
-            # Step 1: Start the LinkedIn Search Scraper actor to find posts
-            actor_id = "apify/linkedin-search-scraper"
+            # Step 1: Start the LinkedIn Post Search Scraper actor
+            actor_id = "curious_coder/linkedin-post-search-scraper"
             run_url = f"https://api.apify.com/v2/acts/{actor_id}/runs"
 
             response = httpx.post(
                 run_url,
                 params={"token": self.apify_token},
                 json={
-                    "limit": limit,
                     "searchKeywords": keywords_filter,
-                    "sinceHours": since_hours,
+                    "limit": limit,
+                    "sort": "RECENT",
                 },
                 timeout=120
             )
@@ -104,9 +104,9 @@ class LinkedInClient:
             if resp.status_code == 200:
                 posts = resp.json()
                 if isinstance(posts, list):
-                    return [{"url": p.get("url", ""), "id": p.get("id", "")} for p in posts]
+                    return [{"url": p.get("url", ""), "id": p.get("id", ""), "urn": p.get("full_urn", p.get("urn", ""))} for p in posts]
                 if isinstance(posts, dict) and "items" in posts:
-                    return [{"url": p.get("url", ""), "id": p.get("id", "")} for p in posts["items"]]
+                    return [{"url": p.get("url", ""), "id": p.get("id", ""), "urn": p.get("full_urn", p.get("urn", ""))} for p in posts["items"]]
                 return []
             else:
                 print(f"Apify results returned: {resp.status_code}")
@@ -136,16 +136,61 @@ class LinkedInClient:
     def _fetch_post_apify(self, url: str) -> Optional[Dict]:
         """Fetch post via Apify."""
         try:
+            # Use the linkedin-post-scraper actor to fetch post content
+            actor_id = "pratikdani/linkedin-posts-scraper"
+            run_url = f"https://api.apify.com/v2/acts/{actor_id}/runs"
             response = httpx.post(
-                f"https://api.apify.com/v2/key_value_stores/Oc9r3wRpiR0F3U8xZ/get-post",
-                params={"token": self.apify_token, "postUrl": url},
+                run_url,
+                params={"token": self.apify_token},
+                json={"postUrl": url},
+                timeout=120
+            )
+
+            if response.status_code != 200:
+                return None
+
+            run_data = response.json()
+            run_id = run_data.get("data", {}).get("id") or run_data.get("id")
+            if not run_id:
+                return None
+
+            import time as _time
+            status_url = f"https://api.apify.com/v2/actor-runs/{run_id}"
+            dataset_id = None
+            max_wait = 120
+            waited = 0
+
+            while waited < max_wait:
+                _time.sleep(5)
+                waited += 5
+                resp = httpx.get(f"{status_url}?token={self.apify_token}", timeout=30)
+                if resp.status_code != 200:
+                    return None
+                run_info = resp.json()
+                status = run_info.get("data", {}).get("status", "")
+                dataset_id = run_info.get("data", {}).get("defaultDatasetId")
+                if status in ("succeeded", "failed"):
+                    break
+                if status in ("aborted", "cancelled"):
+                    return None
+
+            if not dataset_id:
+                return None
+
+            results_url = f"https://api.apify.com/v2/datasets/{dataset_id}/items"
+            resp = httpx.get(
+                results_url,
+                params={"token": self.apify_token, "clean": "true"},
                 timeout=30
             )
 
-            if response.status_code == 200:
-                return response.json()
-            else:
-                return None
+            if resp.status_code == 200:
+                posts = resp.json()
+                if isinstance(posts, list) and len(posts) > 0:
+                    return posts[0]
+                if isinstance(posts, dict) and "items" in posts and len(posts["items"]) > 0:
+                    return posts["items"][0]
+            return None
         except Exception as e:
             print(f"Error fetching post: {e}")
             return None
@@ -186,19 +231,19 @@ class LinkedInClient:
         return post_texts[idx]
 
     def post_comment(self, post_url: str, comment: str,
-                     reaction: str = "LIKE") -> Dict:
+                     reaction: str = "LIKE", posted_id: str = None) -> Dict:
         """Post a comment on LinkedIn.
         
         Uses Publora API if available, otherwise returns manual instructions.
         """
         publora_key = os.getenv("PUBLORA_API_KEY")
         if publora_key:
-            return self._post_comment_publora(post_url, comment, reaction)
+            return self._post_comment_publora(post_url, comment, reaction, posted_id)
         else:
             return self._post_comment_manual(post_url, comment, reaction)
 
     def _post_comment_publora(self, post_url: str, comment: str,
-                              reaction: str) -> Dict:
+                              reaction: str, posted_id: str = None) -> Dict:
         """Post a comment on LinkedIn via Publora REST API.
         
         Uses: POST https://api.publora.com/api/v1/linkedin-comments
@@ -230,12 +275,21 @@ class LinkedInClient:
                         break
 
             if not platform_id:
-                return {"success": False, 
+                return {"success": False,
                         "error": "No LinkedIn connection found in Publora account. Connect LinkedIn at https://publora.com/connections",
                         "instructions": self._post_comment_manual(post_url, comment, reaction)["instructions"]}
 
-            # Convert LinkedIn URL to URN format
-            posted_id = self._url_to_urn(post_url)
+            # Use provided URN or convert URL to URN format
+            if posted_id:
+                if posted_id.startswith("urn:li:"):
+                    final_posted_id = posted_id
+                else:
+                    final_posted_id = self._url_to_urn(post_url)
+            else:
+                final_posted_id = self._url_to_urn(post_url)
+
+            print(f"  Posting comment with postedId: {final_posted_id}")
+            print(f"  platformId: {platform_id}")
 
             # Post the comment
             response = httpx.post(
@@ -245,7 +299,7 @@ class LinkedInClient:
                     "Content-Type": "application/json"
                 },
                 json={
-                    "postedId": posted_id,
+                    "postedId": final_posted_id,
                     "platformId": platform_id,
                     "message": comment,
                     "reaction": reaction.lower()
@@ -269,7 +323,7 @@ class LinkedInClient:
             elif response.status_code == 404:
                 return {
                     "success": False,
-                    "error": f"LinkedIn post not found (URN: {posted_id}). The post may not be accessible to your LinkedIn account.",
+                    "error": f"LinkedIn post not found (URN: {final_posted_id}). The post may not be accessible to your LinkedIn account.",
                     "instructions": self._post_comment_manual(post_url, comment, reaction)["instructions"]
                 }
             else:
