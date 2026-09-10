@@ -83,8 +83,19 @@ def main():
             print("No relevant posts found via Apify. Using fallback test posts...")
             posts = [
                 {
-                    "url": "https://www.linkedin.com/posts/apiflash_artificial-intelligence-startup-growth-activity-7234567890123456789-abc",
-                    "id": "fallback_1"
+                    "url": "https://www.linkedin.com/posts/kevin-dowd-7ba281a8_over-the-course-of-last-year-ai-startups-activity-7348387938570772482--N9H",
+                    "id": "fallback_1",
+                    "urn": "urn:li:ugcPost:7348387938570772482"
+                },
+                {
+                    "url": "https://www.linkedin.com/posts/sahilsharma25_in-2024-i-watched-a-promising-startup-burn-activity-7289202021189001216-Pzca",
+                    "id": "fallback_2",
+                    "urn": "urn:li:ugcPost:7289202021189001216"
+                },
+                {
+                    "url": "https://www.linkedin.com/posts/jason-bennett-6b879b7_aws-startup-insights-technical-guides-activity-7478162181906124801-5oIg",
+                    "id": "fallback_3",
+                    "urn": "urn:li:ugcPost:7478162181906124801"
                 }
             ]
 
