@@ -348,14 +348,15 @@ class LinkedInClient:
         if url.startswith("urn:li:"):
             return url
         
-        # Try to extract from activity ID in fallback posts
+        # Try to extract activity ID from URL and try multiple URN formats
         match = re.search(r'activity-(\d+)', url)
         if match:
-            return f"urn:li:ugcPost:{match.group(1)}"
+            activity_id = match.group(1)
+            return f"urn:li:activity:{activity_id}"
         
         # For fallback test URLs, generate a synthetic URN
         # In production, this would come from Apify's post fetcher
-        return f"urn:li:ugcPost:7234567890123456789"
+        return f"urn:li:activity:7234567890123456789"
 
     def _post_comment_manual(self, post_url: str, comment: str,
                              reaction: str) -> Dict:
