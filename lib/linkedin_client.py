@@ -187,24 +187,29 @@ class LinkedInClient:
 
     def post_comment(self, post_url: str, comment: str,
                      reaction: str = "LIKE") -> Dict:
-        """Post a comment on LinkedIn."""
-        if self.apify_token:
+        """Post a comment on LinkedIn.
+        
+        Uses Publora API if available, otherwise returns manual instructions.
+        """
+        publora_key = os.getenv("PUBLORA_API_KEY")
+        if publora_key:
             return self._post_comment_publora(post_url, comment, reaction)
         else:
             return self._post_comment_manual(post_url, comment, reaction)
 
     def _post_comment_publora(self, post_url: str, comment: str,
                               reaction: str) -> Dict:
-        """Post via Publora API."""
+        """Post a comment on LinkedIn via Publora REST API."""
         publora_key = os.getenv("PUBLORA_API_KEY")
         if not publora_key:
-            return {"success": False, "error": "Publora API key not configured"}
+            return {"success": False, "error": "Publora API key not configured",
+                    "instructions": self._post_comment_manual(post_url, comment, reaction)["instructions"]}
 
         try:
             response = httpx.post(
-                "https://api.publora.com/v1/comment",
+                "https://api.publora.com/api/v1/linkedin/create-comment",
                 headers={
-                    "Authorization": f"Bearer {publora_key}",
+                    "x-publora-key": publora_key,
                     "Content-Type": "application/json"
                 },
                 json={
@@ -222,10 +227,20 @@ class LinkedInClient:
                     "comment_id": result.get("id"),
                     "timestamp": result.get("createdAt", datetime.now(timezone.utc).isoformat())
                 }
+            elif response.status_code == 401:
+                # Publora not connected/authenticated - return manual instructions
+                return {
+                    "success": False,
+                    "error": "Publora account not connected to LinkedIn. Use manual instructions.",
+                    "manual": True,
+                    "instructions": self._post_comment_manual(post_url, comment, reaction)["instructions"]
+                }
             else:
-                return {"success": False, "error": f"HTTP {response.status_code}: {response.text}"}
+                return {"success": False, "error": f"HTTP {response.status_code}: {response.text}",
+                        "instructions": self._post_comment_manual(post_url, comment, reaction)["instructions"]}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": str(e),
+                    "instructions": self._post_comment_manual(post_url, comment, reaction)["instructions"]}
 
     def _post_comment_manual(self, post_url: str, comment: str,
                              reaction: str) -> Dict:
